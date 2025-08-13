@@ -2,8 +2,8 @@
 const ArgumentType = require('../../extension-support/argument-type');
 const BlockType = require('../../extension-support/block-type');
 const formatMessage = require('format-message');
-const {openReverseGeocoder} = require('@geolonia/open-reverse-geocoder');
-const {isCSVData, isGeojsonData, getSpriteBBox, propertyToString} = require('./utils');
+const { openReverseGeocoder } = require('@geolonia/open-reverse-geocoder');
+const { isCSVData, isGeojsonData, getSpriteBBox, propertyToString } = require('./utils');
 
 const AvailableLocales = ['en', 'ja', 'ja-Hira'];
 
@@ -12,20 +12,20 @@ class Scratch3GeoloniaBlocks {
 
     sourceName = 'custom-markers';
 
-    constructor (runtime) {
+    constructor(runtime) {
         this.runtime = runtime;
         this.loaded = false;
         this._initState();
     }
 
-    _initState (lng = 139.74, lat = 35.65, zoom = 14) {
+    _initState(lng = 139.74, lat = 35.65, zoom = 14) {
         this.map = null;
         this.addr = {
             code: '',
             prefecture: '',
             city: ''
         };
-        this.center = {lng: lng, lat: lat};
+        this.center = { lng: lng, lat: lat };
         this.zoom = zoom;
         this.features = [];
         this.data = '';
@@ -49,6 +49,22 @@ class Scratch3GeoloniaBlocks {
             id: 'geolonia',
             name: '地図',
             blocks: [
+                {
+                    opcode: 'drivingDistance',
+                    blockType: BlockType.COMMAND,
+                    text: 'Driving Distance [DISTANCE]m [COLOR] color',
+                    arguments: {
+                        DISTANCE: {
+                            type: ArgumentType.NUMBER,
+                            defaultValue: 500
+                        },
+                        COLOR: {
+                            type: ArgumentType.COLOR,
+                            defaultValue: '#FF0000'
+                        }
+
+                    }
+                },
                 {
                     opcode: 'displayMap',
                     blockType: BlockType.COMMAND,
@@ -443,10 +459,10 @@ class Scratch3GeoloniaBlocks {
             ],
             menus: {
                 baseMapStyles: [
-                    {text: '標準', value: 'https://geolonia.github.io/mapfandb-styles/mapfan_nologo.json'},
-                    {text: 'geolonia basic', value: 'https://basic-v1-background-only.pages.dev/style.json'},
-                    {text: '衛星写真', value: 'https://smartcity-satellite.styles.geoloniamaps.com/style.json'},
-                    {text: 'ゲーム風', value: 'https://chizubouken-lab.pages.dev/style.json'}
+                    { text: '標準', value: 'https://geolonia.github.io/mapfandb-styles/mapfan_nologo.json' },
+                    { text: 'geolonia basic', value: 'https://basic-v1-background-only.pages.dev/style.json' },
+                    { text: '衛星写真', value: 'https://smartcity-satellite.styles.geoloniamaps.com/style.json' },
+                    { text: 'ゲーム風', value: 'https://chizubouken-lab.pages.dev/style.json' }
                 ],
                 variableMenu: function () {
                     const variableNames = [
@@ -531,18 +547,18 @@ class Scratch3GeoloniaBlocks {
         return (this.layerAttributes && this.layerAttributes.name) ? this.layerAttributes.name : '';
     }
 
-    getZoom () {
+    getZoom() {
         return `${Math.round(this.zoom * 1000) / 1000}`;
     }
 
-    getData () {
+    getData() {
         if (typeof this.data === 'object') {
             return JSON.stringify(this.data);
         }
         return this.data;
     }
 
-    getLayerAttributes () {
+    getLayerAttributes() {
         if (!this.layerAttributes) {
             console.error('レイヤー情報が設定されていません。');
             return '';
@@ -585,7 +601,64 @@ class Scratch3GeoloniaBlocks {
     //     }
     // }
 
-    displayMap (args) {
+    async drivingDistance(args) {
+
+        if (!this.loaded) {
+            console.error('まず地図を表示してください。');
+            return;
+        }
+
+        console.log('Driving Distance %d', args.DISTANCE);
+        console.log("Center: ", this.map.getCenter());
+
+        const mRadius = args.DISTANCE;
+        const mColor = args.COLOR;
+        const mCenter = this.map.getCenter();
+        const source_x = mCenter.lng;
+        const source_y = mCenter.lat;
+
+        const url = `http://mb.georepublic.info/pgrServer/api/latlng/drivingDistance?radius=${mRadius}&source_x=${source_x}&source_y=${source_y}`;
+
+        try {
+            const response = await fetch(url);
+            if (!response.ok) throw new Error('Network response was not ok');
+            const geojsonData = await response.json();
+
+            // Remove existing source and layer if present
+            if (this.map.getSource('my-geojson')) {
+                // Remove layers that use this source
+                const layers = this.map.getStyle().layers;
+                layers.forEach(layer => {
+                    if (layer.source === 'my-geojson') {
+                        this.map.removeLayer(layer.id);
+                    }
+                });
+                // Remove the source
+                this.map.removeSource('my-geojson');
+            }
+
+            this.map.addSource('my-geojson', {
+                type: 'geojson',
+                data: geojsonData
+            });
+
+
+            this.map.addLayer({
+                id: 'my-geojson-layer',
+                type: 'fill', // or 'line', 'circle', etc.
+                source: 'my-geojson',
+                paint: {
+                    'fill-color': mColor,
+                    'fill-outline-color': '#000000',
+                    'fill-opacity': 0.5
+                }
+            });
+        } catch (error) {
+            console.error('Fetch error:', error);
+        }
+    }
+
+    displayMap(args) {
 
         // すでに地図が生成されていれば緯度経度zoomを変更、変数を初期化、レイヤーを削除
         if (this.map && this.loaded) {
@@ -647,7 +720,7 @@ class Scratch3GeoloniaBlocks {
         });
     }
 
-    removeMap () {
+    removeMap() {
         if (!this.loaded) {
             console.error('まず地図を表示してください。');
             return;
@@ -668,13 +741,13 @@ class Scratch3GeoloniaBlocks {
     }
 
     // レイヤーのアイコンを変更
-    changeLayerIcon (args) {
+    changeLayerIcon(args) {
         if (!this.loaded) {
             console.error('まず地図を表示してください。');
             return;
         }
         const layerIds = this.map.hasLayer(args.LAYER);
-        
+
         if (layerIds.length > 0) {
             layerIds.forEach(layerId => {
                 this.map.changeLayerIcon(layerId, args.ICON, 'chizubouken-lab');
@@ -682,7 +755,7 @@ class Scratch3GeoloniaBlocks {
         }
     }
 
-    changeSymbolMarkerIcon (args) {
+    changeSymbolMarkerIcon(args) {
         if (!this.loaded) {
             console.error('まず地図を表示してください。');
             return;
@@ -699,7 +772,7 @@ class Scratch3GeoloniaBlocks {
     }
 
     // クラス内にメソッドを追加
-    isTouchingLayer (args, util) {
+    isTouchingLayer(args, util) {
         if (
             !this.loaded ||
             !this.map ||
@@ -759,7 +832,7 @@ class Scratch3GeoloniaBlocks {
         return markerFeatures.length > 0;
     }
 
-    isSpriteClicked (args) {
+    isSpriteClicked(args) {
         if (!this.loaded || !this.map) {
             return false;
         }
@@ -777,7 +850,7 @@ class Scratch3GeoloniaBlocks {
         return markerFeatures.length > 0;
     }
 
-    addOSMPoiLayer (args) {
+    addOSMPoiLayer(args) {
         if (!this.loaded) {
             console.error('まず地図を表示してください。');
             return;
@@ -788,7 +861,7 @@ class Scratch3GeoloniaBlocks {
         this.map.loadOsmPoi(args.LAYER, 'chizubouken-lab');
     }
 
-    removeOSMPoiLayer (args) {
+    removeOSMPoiLayer(args) {
         if (!this.loaded) {
             console.error('まず地図を表示してください。');
             return;
@@ -796,7 +869,7 @@ class Scratch3GeoloniaBlocks {
         this.map.removeOsmPoi(args.LAYER);
     }
 
-    showHazardMapLayer (args) {
+    showHazardMapLayer(args) {
         if (!this.loaded) {
             console.error('まず地図を表示してください。');
             return;
@@ -804,7 +877,7 @@ class Scratch3GeoloniaBlocks {
         this.map.loadHazardMapData(args.LAYER);
     }
 
-    removeHazardMapLayer (args) {
+    removeHazardMapLayer(args) {
         if (!this.loaded) {
             console.error('まず地図を表示してください。');
             return;
@@ -812,7 +885,7 @@ class Scratch3GeoloniaBlocks {
         this.map.removeHazardMapData(args.LAYER);
     }
 
-    showNLNIMapLayer (args) {
+    showNLNIMapLayer(args) {
         if (!this.loaded) {
             console.error('まず地図を表示してください。');
             return;
@@ -820,7 +893,7 @@ class Scratch3GeoloniaBlocks {
         this.map.loadNLNIData(args.LAYER);
     }
 
-    removeNLNIMapLayer (args) {
+    removeNLNIMapLayer(args) {
         if (!this.loaded) {
             console.error('まず地図を表示してください。');
             return;
@@ -828,7 +901,7 @@ class Scratch3GeoloniaBlocks {
         this.map.removeNLNIData(args.LAYER);
     }
 
-    changePitch (args) {
+    changePitch(args) {
         if (!this.loaded) {
             console.error('まず地図を表示してください。');
             return;
@@ -846,7 +919,7 @@ class Scratch3GeoloniaBlocks {
         });
     }
 
-    setBaseMap (args) {
+    setBaseMap(args) {
         if (!this.loaded) {
             // eslint-disable-next-line no-console
             console.error('まず地図を表示してください。');
@@ -855,7 +928,7 @@ class Scratch3GeoloniaBlocks {
         this.map.setBaseMapStyle(args.STYLE);
     }
 
-    setMaxZoom (args) {
+    setMaxZoom(args) {
         if (!this.loaded) {
             console.error('まず地図を表示してください。');
             return;
@@ -864,7 +937,7 @@ class Scratch3GeoloniaBlocks {
         this.map.setMaxZoom(Number(args.MAXZOOM));
     }
 
-    setMinZoom (args) {
+    setMinZoom(args) {
         if (!this.loaded) {
             console.error('まず地図を表示してください。');
             return;
@@ -873,7 +946,7 @@ class Scratch3GeoloniaBlocks {
         this.map.setMinZoom(Number(args.MINZOOM));
     }
 
-    setLayerAttribute (args, util) {
+    setLayerAttribute(args, util) {
         if (!this.loaded) {
             console.error('まず地図を表示してください。');
             return;
@@ -884,17 +957,17 @@ class Scratch3GeoloniaBlocks {
         const bbox = getSpriteBBox(bounds, stage);
 
         // レイヤーの情報を取得
-        const features = this.map.getFeaturesProperties(bbox, {firstOnly: true});
+        const features = this.map.getFeaturesProperties(bbox, { firstOnly: true });
 
         this.layerAttributes = features[0].properties;
     }
 
-    addSymbolMarker (args) {
+    addSymbolMarker(args) {
         if (!this.loaded) {
             console.error('まず地図を表示してください。');
             return;
         }
-        
+
         this.customMarkers.features.push({
             type: 'Feature',
             geometry: {
@@ -923,7 +996,7 @@ class Scratch3GeoloniaBlocks {
         this.addCustomMarkerNames.push(args.NAME);
     }
 
-    removeSymbolMarker (args) {
+    removeSymbolMarker(args) {
         if (!this.loaded) {
             console.error('まず地図を表示してください。');
             return;
@@ -941,7 +1014,7 @@ class Scratch3GeoloniaBlocks {
         this.map.getSource(this.sourceName).setData(this.customMarkers);
     }
 
-    addLayer (args) {
+    addLayer(args) {
         if (!this.loaded) {
             console.error('まず地図を表示してください。');
             return;
@@ -949,6 +1022,8 @@ class Scratch3GeoloniaBlocks {
 
         // geojsonかどうかを確認する
         const isGeojson = isGeojsonData(args.DATA);
+        console.log('isGeojson', isGeojson);
+
         if (isGeojson) {
             this.map.loadGeojson(args.DATA, args.NAME, {
                 'fill-color': args.COLOR,
@@ -1056,7 +1131,7 @@ class Scratch3GeoloniaBlocks {
         }
 
         const promise = new Promise((resolve) => {
-            this.map.flyTo({center: [args.LNG, args.LAT], zoom: args.ZOOM});
+            this.map.flyTo({ center: [args.LNG, args.LAT], zoom: args.ZOOM });
 
             this.map.once('moveend', () => {
                 resolve();
