@@ -66,6 +66,22 @@ class Scratch3GeoloniaBlocks {
                     }
                 },
                 {
+                    opcode: 'shortestPath',
+                    blockType: BlockType.COMMAND,
+                    text: 'Path [STATION] 駅の位置を取得 [COLOR] 色',
+                    arguments: {
+                        STATION: {
+                            type: ArgumentType.Object,
+                            menu: 'stationMenu',
+                            defaultValue: '    '
+                        },
+                        COLOR: {
+                            type: ArgumentType.COLOR,
+                            defaultValue: '#FF0000'
+                        }
+                    }
+                },
+                {
                     opcode: 'displayMap',
                     blockType: BlockType.COMMAND,
                     text: '地図を経度 [LNG] 緯度 [LAT] ズーム [ZOOM] で表示',
@@ -464,6 +480,28 @@ class Scratch3GeoloniaBlocks {
                     { text: '衛星写真', value: 'https://smartcity-satellite.styles.geoloniamaps.com/style.json' },
                     { text: 'ゲーム風', value: 'https://chizubouken-lab.pages.dev/style.json' }
                 ],
+                stationMenu: [
+                    {
+                        text: "東京駅",
+                        value: { lat: 35.68111, lng: 139.76667 }
+                    },
+                    {
+                        text: "新宿駅",
+                        value: { lat: 35.69037, lng: 139.70003 }
+                    },
+                    {
+                        text: "渋谷駅",
+                        value: { lat: 35.65904, lng: 139.70137 }
+                    },
+                    {
+                        text: "品川駅",
+                        value: { lat: 35.62871, lng: 139.7386 }
+                    },
+                    {
+                        text: "池袋駅",
+                        value: { lat: 35.7299, lng: 139.71094 }
+                    }
+                ],
                 variableMenu: function () {
                     const variableNames = [
                         ['都道府県名', 'getPref'],
@@ -601,6 +639,65 @@ class Scratch3GeoloniaBlocks {
     //     }
     // }
 
+    removeSourceAndLayer(id) {
+        if (this.map.getSource(id)) {
+            // Remove layers that use this source
+            const layers = this.map.getStyle().layers;
+            layers.forEach(layer => {
+                if (layer.source === id) {
+                    this.map.removeLayer(layer.id);
+                }
+            });
+            // Remove the source
+            this.map.removeSource(id);
+        }
+    }
+
+    async shortestPath(args) {
+        if (args.STATION === '    ' || !this.loaded) {
+            console.error('まず地図を表示してください。');
+            return;
+        }
+
+        console.log(args.STATION.lat, args.STATION.lng);
+        const mCenter = this.map.getCenter();
+        const mColor = args.COLOR;
+        const source_x = args.STATION.lng;
+        const source_y = args.STATION.lat;
+        const target_x = mCenter.lng;
+        const target_y = mCenter.lat;
+
+        const url = `http://mb.georepublic.info/pgrServer/api/latlng/dijkstra?source_x=${source_x}&source_y=${source_y}&target_x=${target_x}&target_y=${target_y}`;
+
+        try {
+            const response = await fetch(url);
+            if (!response.ok) throw new Error('Network response was not ok');
+            const geojsonData = await response.json();
+
+            // Remove existing source and layer if present
+            this.removeSourceAndLayer('shortestPath');
+
+            // Add Source and Layer
+            this.map.addSource('shortestPath', {
+                type: 'geojson',
+                data: geojsonData
+            });
+
+
+            this.map.addLayer({
+                id: 'shortestPath-layer',
+                type: 'line', // or 'line', 'circle', etc.
+                source: 'shortestPath',
+                paint: {
+                    'line-color': mColor,
+                    'line-width': 5
+                }
+            });
+        } catch (error) {
+            console.error('Fetch error:', error);
+        }
+    }
+
     async drivingDistance(args) {
 
         if (!this.loaded) {
@@ -625,28 +722,19 @@ class Scratch3GeoloniaBlocks {
             const geojsonData = await response.json();
 
             // Remove existing source and layer if present
-            if (this.map.getSource('my-geojson')) {
-                // Remove layers that use this source
-                const layers = this.map.getStyle().layers;
-                layers.forEach(layer => {
-                    if (layer.source === 'my-geojson') {
-                        this.map.removeLayer(layer.id);
-                    }
-                });
-                // Remove the source
-                this.map.removeSource('my-geojson');
-            }
+            this.removeSourceAndLayer('drivingDistance');
 
-            this.map.addSource('my-geojson', {
+            // Add Source and Layer
+            this.map.addSource('drivingDistance', {
                 type: 'geojson',
                 data: geojsonData
             });
 
 
             this.map.addLayer({
-                id: 'my-geojson-layer',
+                id: 'drivingDistance-layer',
                 type: 'fill', // or 'line', 'circle', etc.
-                source: 'my-geojson',
+                source: 'drivingDistance',
                 paint: {
                     'fill-color': mColor,
                     'fill-outline-color': '#000000',
