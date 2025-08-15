@@ -662,10 +662,11 @@ class Scratch3GeoloniaBlocks {
         console.log(args.STATION.lat, args.STATION.lng);
         const mCenter = this.map.getCenter();
         const mColor = args.COLOR;
-        const source_x = args.STATION.lng;
-        const source_y = args.STATION.lat;
-        const target_x = mCenter.lng;
-        const target_y = mCenter.lat;
+
+        const source_x = mCenter.lng;
+        const source_y = mCenter.lat;
+        const target_x = args.STATION.lng;
+        const target_y = args.STATION.lat;
 
         const url = `http://mb.georepublic.info/pgrServer/api/latlng/dijkstra?source_x=${source_x}&source_y=${source_y}&target_x=${target_x}&target_y=${target_y}`;
 
@@ -676,6 +677,7 @@ class Scratch3GeoloniaBlocks {
 
             // Remove existing source and layer if present
             this.removeSourceAndLayer('shortestPath');
+            this.removeSourceAndLayer('shortestPath-markers');
 
             // Add Source and Layer
             this.map.addSource('shortestPath', {
@@ -693,6 +695,53 @@ class Scratch3GeoloniaBlocks {
                     'line-width': 5
                 }
             });
+
+            // Add start and end markers as a GeoJSON source
+            const markerGeojson = {
+                type: 'FeatureCollection',
+                features: [
+                    {
+                        type: 'Feature',
+                        geometry: {
+                            type: 'Point',
+                            coordinates: [source_x, source_y]
+                        },
+                        properties: { markerType: 'start' }
+                    },
+                    {
+                        type: 'Feature',
+                        geometry: {
+                            type: 'Point',
+                            coordinates: [target_x, target_y]
+                        },
+                        properties: { markerType: 'end' }
+                    }
+                ]
+            };
+
+            this.map.addSource('shortestPath-markers', {
+                type: 'geojson',
+                data: markerGeojson
+            });
+
+            this.map.addLayer({
+                id: 'shortestPath-markers-layer',
+                type: 'circle',
+                source: 'shortestPath-markers',
+                paint: {
+                    'circle-radius': 8,
+                    'circle-color': [
+                        'match',
+                        ['get', 'markerType'],
+                        'start', '#1deb1dff', // green for start
+                        'end', '#FF0000',   // red for end
+                        '#0000FF'           // default
+                    ],
+                    'circle-stroke-width': 2,
+                    'circle-stroke-color': '#ffffff'
+                }
+            });
+
         } catch (error) {
             console.error('Fetch error:', error);
         }
