@@ -50,6 +50,11 @@ class Scratch3GeoloniaBlocks {
             name: '地図',
             blocks: [
                 {
+                    opcode: 'clearPathDrivePoly',
+                    blockType: BlockType.COMMAND,
+                    text: '経路をクリア',
+                },
+                {
                     opcode: 'drivingDistance',
                     blockType: BlockType.COMMAND,
                     text: 'Driving Distance [DISTANCE]m [COLOR] color',
@@ -651,6 +656,12 @@ class Scratch3GeoloniaBlocks {
             // Remove the source
             this.map.removeSource(id);
         }
+    }
+
+    clearPathDrivePoly() {
+        this.removeSourceAndLayer('shortestPath');
+        this.removeSourceAndLayer('shortestPath-markers');
+        this.removeSourceAndLayer('drivingDistance');
     }
 
     async shortestPath(args) {
