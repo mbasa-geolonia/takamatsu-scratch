@@ -57,7 +57,7 @@ class Scratch3GeoloniaBlocks {
                 {
                     opcode: 'drivingDistance',
                     blockType: BlockType.COMMAND,
-                    text: 'Driving Distance [DISTANCE]m [COLOR] color',
+                    text: '車で [DISTANCE]m [COLOR] 色',
                     arguments: {
                         DISTANCE: {
                             type: ArgumentType.NUMBER,
@@ -71,18 +71,44 @@ class Scratch3GeoloniaBlocks {
                     }
                 },
                 {
+                    opcode: 'walkingDistance',
+                    blockType: BlockType.COMMAND,
+                    text: '徒歩 [MINUTES]分 [COLOR] 色',
+                    arguments: {
+                        MINUTES: {
+                            type: ArgumentType.NUMBER,
+                            defaultValue: 10
+                        },
+                        COLOR: {
+                            type: ArgumentType.COLOR,
+                            defaultValue: '#00AAFF'
+                        }
+                    }
+                },
+                {
                     opcode: 'shortestPath',
                     blockType: BlockType.COMMAND,
                     text: 'Path [STATION] 駅の位置を取得 [COLOR] 色',
                     arguments: {
                         STATION: {
-                            type: ArgumentType.Object,
+                            type: ArgumentType.STRING,
                             menu: 'stationMenu',
-                            defaultValue: '    '
+                            defaultValue: '{ "lat": 35.68111, "lng": 139.76667 }'
                         },
                         COLOR: {
                             type: ArgumentType.COLOR,
                             defaultValue: '#FF0000'
+                        }
+                    }
+                },
+                {
+                    opcode: 'centerMapByAddress',
+                    blockType: BlockType.COMMAND,
+                    text: '住所 [ADDRESS] で地図を中心にする',
+                    arguments: {
+                        ADDRESS: {
+                            type: ArgumentType.STRING,
+                            defaultValue: '東京都千代田区丸の内1-9-1'
                         }
                     }
                 },
@@ -488,23 +514,23 @@ class Scratch3GeoloniaBlocks {
                 stationMenu: [
                     {
                         text: "東京駅",
-                        value: { lat: 35.68111, lng: 139.76667 }
+                        value: '{ "lat": 35.68111, "lng": 139.76667 }'
                     },
                     {
                         text: "新宿駅",
-                        value: { lat: 35.69037, lng: 139.70003 }
+                        value: '{ "lat": 35.69037, "lng": 139.70003 }'
                     },
                     {
                         text: "渋谷駅",
-                        value: { lat: 35.65904, lng: 139.70137 }
+                        value: '{ "lat": 35.65904, "lng": 139.70137 }'
                     },
                     {
                         text: "品川駅",
-                        value: { lat: 35.62871, lng: 139.7386 }
+                        value: '{ "lat": 35.62871, "lng": 139.7386 }'
                     },
                     {
                         text: "池袋駅",
-                        value: { lat: 35.7299, lng: 139.71094 }
+                        value: '{ "lat": 35.7299, "lng": 139.71094 }'
                     }
                 ],
                 variableMenu: function () {
@@ -658,10 +684,38 @@ class Scratch3GeoloniaBlocks {
         }
     }
 
+    async centerMapByAddress(args) {
+        if (!this.loaded) {
+            console.error('まず地図を表示してください。');
+            return;
+        }
+        const address = args.ADDRESS;
+        const url = `http://mb.georepublic.info/geocoderService/service/geocode/geojson/${address}`;
+        try {
+            const response = await fetch(url);
+            if (!response.ok) throw new Error('Geocoding failed');
+            const geojson = await response.json();
+            if (
+                geojson.geometry &&
+                geojson.geometry.coordinates &&
+                geojson.geometry.coordinates[0] != -999
+            ) {
+                const [lng, lat] = geojson.geometry.coordinates;
+                this.map.flyTo({ center: [lng, lat], essential: true, minZoom: 12 });
+                this.center = { lng, lat };
+            } else {
+                console.error(`住所が見つかりませんでした。 ${geojson}`);
+            }
+        } catch (e) {
+            console.error('Geocoding error:', e);
+        }
+    }
+
     clearPathDrivePoly() {
         this.removeSourceAndLayer('shortestPath');
         this.removeSourceAndLayer('shortestPath-markers');
         this.removeSourceAndLayer('drivingDistance');
+        this.removeSourceAndLayer('walkingDistance');
     }
 
     async shortestPath(args) {
@@ -673,11 +727,12 @@ class Scratch3GeoloniaBlocks {
         console.log(args.STATION.lat, args.STATION.lng);
         const mCenter = this.map.getCenter();
         const mColor = args.COLOR;
+        const mArgs = JSON.parse(args.STATION);
 
         const source_x = mCenter.lng;
         const source_y = mCenter.lat;
-        const target_x = args.STATION.lng;
-        const target_y = args.STATION.lat;
+        const target_x = mArgs.lng;
+        const target_y = mArgs.lat;
 
         const url = `http://mb.georepublic.info/pgrServer/api/latlng/dijkstra?source_x=${source_x}&source_y=${source_y}&target_x=${target_x}&target_y=${target_y}`;
 
@@ -753,6 +808,51 @@ class Scratch3GeoloniaBlocks {
                 }
             });
 
+        } catch (error) {
+            console.error('Fetch error:', error);
+        }
+        return Promise.resolve();
+    }
+
+    async walkingDistance(args) {
+        if (!this.loaded) {
+            console.error('まず地図を表示してください。');
+            return;
+        }
+
+        // 一般的な徒歩速度: 80m/分 (4.8km/h)
+        const meters = Number(args.MINUTES) * 80;
+        const mColor = args.COLOR;
+        const mCenter = this.map.getCenter();
+        const source_x = mCenter.lng;
+        const source_y = mCenter.lat;
+
+        const url = `http://mb.georepublic.info/pgrServer/api/latlng/drivingDistance?radius=${meters}&source_x=${source_x}&source_y=${source_y}`;
+
+        try {
+            const response = await fetch(url);
+            if (!response.ok) throw new Error('Network response was not ok');
+            const geojsonData = await response.json();
+
+            // Remove existing source and layer if present
+            this.removeSourceAndLayer('walkingDistance');
+
+            // Add Source and Layer
+            this.map.addSource('walkingDistance', {
+                type: 'geojson',
+                data: geojsonData
+            });
+
+            this.map.addLayer({
+                id: 'walkingDistance-layer',
+                type: 'fill',
+                source: 'walkingDistance',
+                paint: {
+                    'fill-color': mColor,
+                    'fill-outline-color': '#000000',
+                    'fill-opacity': 0.5
+                }
+            });
         } catch (error) {
             console.error('Fetch error:', error);
         }
