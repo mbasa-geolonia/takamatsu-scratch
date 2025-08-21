@@ -5,6 +5,9 @@ const formatMessage = require('format-message');
 const { openReverseGeocoder } = require('@geolonia/open-reverse-geocoder');
 const { isCSVData, isGeojsonData, getSpriteBBox, propertyToString } = require('./utils');
 
+const GEOCODER_URL = 'http://mb.georepublic.info/geocoderService/service/geocode/geojson/';
+const SHORTEST_PATH_URL = 'http://mb.georepublic.info/pgrServer/api/latlng/dijkstra';
+
 const AvailableLocales = ['en', 'ja', 'ja-Hira'];
 
 class Scratch3GeoloniaBlocks {
@@ -88,9 +91,9 @@ class Scratch3GeoloniaBlocks {
                 {
                     opcode: 'shortestPath',
                     blockType: BlockType.COMMAND,
-                    text: 'Path [STATION] 駅の位置を取得 [COLOR] 色',
+                    text: 'Path [COORDS] 駅の位置を取得 [COLOR] 色',
                     arguments: {
-                        STATION: {
+                        COORDS: {
                             type: ArgumentType.STRING,
                             menu: 'stationMenu',
                             defaultValue: '{ "lat": 35.68111, "lng": 139.76667 }'
@@ -109,6 +112,21 @@ class Scratch3GeoloniaBlocks {
                         ADDRESS: {
                             type: ArgumentType.STRING,
                             defaultValue: '東京都千代田区丸の内1-9-1'
+                        }
+                    }
+                },
+                {
+                    opcode: 'shortestPathToAddress',
+                    blockType: BlockType.COMMAND,
+                    text: '現在地から住所 [ADDRESS] までの最短経路を [COLOR] 色で表示',
+                    arguments: {
+                        ADDRESS: {
+                            type: ArgumentType.STRING,
+                            defaultValue: '東京都千代田区丸の内1-9-1'
+                        },
+                        COLOR: {
+                            type: ArgumentType.COLOR,
+                            defaultValue: '#FF0000'
                         }
                     }
                 },
@@ -684,13 +702,48 @@ class Scratch3GeoloniaBlocks {
         }
     }
 
+    async shortestPathToAddress(args) {
+        if (!this.loaded) {
+            console.error('まず地図を表示してください。');
+            return;
+        }
+        const address = args.ADDRESS;
+        const color = args.COLOR;
+
+        //  Geocode the address
+        const geocodeUrl = `${GEOCODER_URL}${address}`;
+
+        try {
+            const response = await fetch(geocodeUrl);
+            if (!response.ok) throw new Error('Geocoding failed');
+            const geojson = await response.json();
+            if (
+                geojson.geometry &&
+                geojson.geometry.coordinates &&
+                geojson.geometry.coordinates[0] != -999
+            ) {
+                const [lng, lat] = geojson.geometry.coordinates;
+                const mArgs = {
+                    "COLOR": color,
+                    "COORDS": `{"lat": ${lat}, "lng": ${lng}}`
+                };
+                this.shortestPath(mArgs);
+
+            } else {
+                console.error(`住所が見つかりませんでした。 ${geojson}`);
+            }
+        } catch (e) {
+            console.error('Geocoding or path error:', e);
+        }
+    }
+
     async centerMapByAddress(args) {
         if (!this.loaded) {
             console.error('まず地図を表示してください。');
             return;
         }
         const address = args.ADDRESS;
-        const url = `http://mb.georepublic.info/geocoderService/service/geocode/geojson/${address}`;
+        const url = `${GEOCODER_URL}${address}`;
         try {
             const response = await fetch(url);
             if (!response.ok) throw new Error('Geocoding failed');
@@ -724,17 +777,17 @@ class Scratch3GeoloniaBlocks {
             return;
         }
 
-        console.log(args.STATION.lat, args.STATION.lng);
+        console.log(args.COORDS.lat, args.COORDS.lng);
         const mCenter = this.map.getCenter();
         const mColor = args.COLOR;
-        const mArgs = JSON.parse(args.STATION);
+        const mArgs = JSON.parse(args.COORDS);
 
         const source_x = mCenter.lng;
         const source_y = mCenter.lat;
         const target_x = mArgs.lng;
         const target_y = mArgs.lat;
 
-        const url = `http://mb.georepublic.info/pgrServer/api/latlng/dijkstra?source_x=${source_x}&source_y=${source_y}&target_x=${target_x}&target_y=${target_y}`;
+        const url = `${SHORTEST_PATH_URL}?source_x=${source_x}&source_y=${source_y}&target_x=${target_x}&target_y=${target_y}`;
 
         try {
             const response = await fetch(url);
@@ -827,7 +880,7 @@ class Scratch3GeoloniaBlocks {
         const source_x = mCenter.lng;
         const source_y = mCenter.lat;
 
-        const url = `http://mb.georepublic.info/pgrServer/api/latlng/drivingDistance?radius=${meters}&source_x=${source_x}&source_y=${source_y}`;
+        const url = `${DRIVING_DISTANCE_URL}?radius=${meters}&source_x=${source_x}&source_y=${source_y}`;
 
         try {
             const response = await fetch(url);
@@ -874,7 +927,7 @@ class Scratch3GeoloniaBlocks {
         const source_x = mCenter.lng;
         const source_y = mCenter.lat;
 
-        const url = `http://mb.georepublic.info/pgrServer/api/latlng/drivingDistance?radius=${mRadius}&source_x=${source_x}&source_y=${source_y}`;
+        const url = `${DRIVING_DISTANCE_URL}?radius=${mRadius}&source_x=${source_x}&source_y=${source_y}`;
 
         try {
             const response = await fetch(url);
